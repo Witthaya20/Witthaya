@@ -1,0 +1,8 @@
+{
+  "name": "ระบบเช็คการเข้าใช้งานห้องพักครู",
+  "description": "ระบบบันทึกและแสดงผลการเข้าใช้งานห้องพักครูแบบเรียลไทม์สำหรับอาจารย์ นักเรียน และแอดมิน พร้อมฟังก์ชันดึงข้อมูลจาก Google Sheet",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
