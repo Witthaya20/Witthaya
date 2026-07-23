@@ -559,35 +559,43 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
         />
       )}
 
-      {/* Tab CONTENT 1: Google Sheet Import */}
+      {/* Tab CONTENT 1: Google Sheet & Google Apps Script Import */}
       {activeTab === "sheets" && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
-            {/* Main Column 1 & 2: Google Sheet Link */}
+            {/* Main Column 1 & 2: Link Input & Apps Script Config */}
             <div className="lg:col-span-2 space-y-4">
               
-              {/* Box: Google Sheets URL link */}
+              {/* Box: Google Sheets URL or Apps Script Link */}
               <div className="bg-white rounded-lg border border-indigo-200 p-4 shadow-sm space-y-3">
                 <div className="border-b border-slate-150 pb-2 flex items-center justify-between">
                   <div>
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
                       <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-                      เชื่อมโยงตารางผ่าน Google Sheets ออนไลน์
+                      นำเข้าข้อมูลผ่าน Google Sheets หรือ Google Apps Script
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">วาง URL ของ Google Sheets เพื่อดึงตารางเรียนหรือรายชื่อนักเรียนเข้าระบบ</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      รองรับการดึงข้อมูลบัญชีผู้ดูแลระบบ (Admin), อาจารย์, นักเรียน และตารางการใช้ห้อง
+                    </p>
                   </div>
+                  <span className="bg-emerald-100 text-emerald-800 font-extrabold text-[10px] px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                    <Shield className="w-3 h-3 text-emerald-600" />
+                    รองรับ Admin Sync
+                  </span>
                 </div>
 
                 <form onSubmit={handleImportSheet} className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">ลิงก์ Google Sheets ของคุณ</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      ลิงก์ Google Sheets หรือ Google Apps Script Web App URL
+                    </label>
                     <input
                       type="url"
                       value={sheetUrl}
                       onChange={(e) => setSheetUrl(e.target.value)}
-                      placeholder="https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit?usp=sharing"
-                      className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-1.5 px-3 outline-none text-slate-800 transition text-xs"
+                      placeholder="เช่น https://script.google.com/macros/s/.../exec หรือ https://docs.google.com/spreadsheets/d/..."
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition text-xs font-mono"
                     />
                   </div>
 
@@ -599,72 +607,106 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
                     {importLoading ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        กำลังประมวลผลข้อมูล...
+                        กำลังเชื่อมต่อเซิร์ฟเวอร์และดึงข้อมูล...
                       </>
                     ) : (
                       <>
-                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
-                        ดึงและประมวลผลข้อมูลจาก Google Sheets
+                        <RefreshCw className="w-3.5 h-3.5 text-amber-300 animate-spin-slow" />
+                        ดึงและประมวลผลข้อมูลจาก Google Sheets / Apps Script
                       </>
                     )}
                   </button>
                 </form>
               </div>
 
-              {/* Step-by-Step Instructions */}
+              {/* Step-by-Step Instructions & Column Formats */}
               <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2.5 text-xs">
                 <h4 className="font-bold text-slate-700 flex items-center gap-1.5 font-display text-xs uppercase tracking-wider">
                   <Shield className="w-4 h-4 text-amber-500" />
-                  รูปแบบหัวตาราง Google Sheets ที่รองรับการอ่านอัตโนมัติ
+                  รูปแบบหัวตาราง Google Sheets / Apps Script ที่รองรับ
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div className="bg-white p-2.5 rounded border border-slate-200">
-                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">ตารางเวลาการใช้ห้อง</span>
-                    <ul className="list-disc list-inside mt-1.5 space-y-1 text-slate-600 text-[11px]">
-                      <li><strong>เวลากี่โมง</strong> (เช่น 08:30 - 10:30)</li>
-                      <li><strong>ชื่อคนใช้</strong> (เช่น อาจารย์สมชาย ใจดี)</li>
-                      <li><strong>วิชาที่เรียน</strong> (เช่น การเขียนโปรแกรม)</li>
-                      <li><strong>ห้องที่ใช้</strong> (เช่น Lab 401)</li>
-                      <li><strong>จำนวนนักเรียน</strong> (เช่น 35)</li>
-                      <li><strong>สถานะห้องว่างไม่ว่าง</strong> (เช่น ว่าง / ไม่ว่าง)</li>
+                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold block mb-1">
+                      🛡️ ข้อมูลแอดมิน (Admin)
+                    </span>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[10px]">
+                      <li><strong>Username / ไอดี</strong></li>
+                      <li><strong>Password / รหัสผ่าน</strong></li>
+                      <li><strong>ชื่อ-นามสกุล</strong></li>
+                      <li><strong>สิทธิ์ (Role)</strong>: admin / แอดมิน</li>
                     </ul>
                   </div>
-                  
+
                   <div className="bg-white p-2.5 rounded border border-slate-200">
-                    <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded text-[10px] font-bold">รายชื่อนักศึกษา</span>
-                    <ul className="list-disc list-inside mt-1.5 space-y-1 text-slate-600 text-[11px]">
-                      <li><strong>รหัสนักศึกษา</strong> (เช่น 65010001)</li>
-                      <li><strong>ชื่อ-นามสกุล</strong> (เช่น นายสมศักดิ์ ขยัน)</li>
-                      <li><strong>สาขาวิชา</strong> (เช่น เทคโนโลยีสารสนเทศ)</li>
+                    <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded text-[10px] font-bold block mb-1">
+                      🎓 รายชื่อนักศึกษา / อาจารย์
+                    </span>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[10px]">
+                      <li><strong>รหัสนักศึกษา / ไอดี</strong></li>
+                      <li><strong>ชื่อ-นามสกุล</strong></li>
+                      <li><strong>สาขาวิชา / แผนก</strong></li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded border border-slate-200">
+                    <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold block mb-1">
+                      📅 ตารางเวลาการใช้ห้อง
+                    </span>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[10px]">
+                      <li><strong>เวลากี่โมง</strong></li>
+                      <li><strong>ชื่อคนใช้</strong></li>
+                      <li><strong>วิชาที่เรียน</strong> / <strong>ห้องที่ใช้</strong></li>
                     </ul>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Column 3: Instructions & Notes */}
+            {/* Column 3: Apps Script Setup Guide */}
             <div className="space-y-4">
               
-              <div className="bg-slate-900 text-white rounded-lg p-4 shadow-sm space-y-3">
+              <div className="bg-slate-900 text-white rounded-lg p-3.5 shadow-sm space-y-2.5">
                 <div className="flex items-center gap-1.5 border-b border-slate-700 pb-2">
                   <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
                   <h4 className="text-xs font-bold uppercase tracking-wider text-white font-display">
-                    วิธีตั้งค่าแชร์ Google Sheets
+                    โค้ด Google Apps Script (Web App)
                   </h4>
                 </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
-                  <li>เปิดไฟล์ Google Sheets ของคุณ</li>
-                  <li>คลิกปุ่ม <strong className="text-white">แชร์ (Share)</strong> มุมบนขวา</li>
-                  <li>เปลี่ยนสิทธิ์จาก 'จำกัด' เป็น <strong className="text-amber-300">'ทุกคนที่มีลิงก์' (Anyone with link)</strong></li>
-                  <li>คัดลอก URL ของหน้าเว็บมาวางในช่องและกดประมวลผล</li>
-                </ol>
+                <p className="text-[10px] text-slate-300 leading-relaxed">
+                  ไปที่ Google Sheets &gt; <strong className="text-amber-300">ส่วนขยาย (Extensions)</strong> &gt; <strong className="text-amber-300">Apps Script</strong> แล้ววางโค้ดนี้เพื่อดึงข้อมูลสดผ่าน Web App:
+                </p>
+                
+                <div className="bg-slate-950 p-2.5 rounded border border-slate-800 text-[10px] font-mono text-emerald-400 overflow-x-auto select-all leading-relaxed">
+                  <code>
+                    {`function doGet() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}`}
+                  </code>
+                </div>
+
+                <div className="space-y-1 text-[10px] text-slate-400">
+                  <div className="font-bold text-slate-200">ขั้นตอนการ Deploy Web App:</div>
+                  <ol className="list-decimal list-inside space-y-0.5 text-[10px]">
+                    <li>กด <strong>การทบทวนตั้งค่า (Deploy) &gt; การตั้งค่าใหม่ (New deployment)</strong></li>
+                    <li>เลือกประเภทเป็น <strong>เว็บแอป (Web app)</strong></li>
+                    <li>ผู้เข้าถึง: เลือก <strong className="text-amber-300">ทุกคน (Anyone)</strong></li>
+                    <li>คัดลอก URL ของ Web App มาวางในช่องฝั่งซ้าย</li>
+                  </ol>
+                </div>
               </div>
 
               {/* Status Note */}
-              <div className="bg-white rounded-lg border border-slate-200 p-3.5 text-xs text-slate-500 space-y-1">
-                <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">อัปเดตข้อมูลอัตโนมัติ</div>
+              <div className="bg-white rounded-lg border border-slate-200 p-3 text-xs text-slate-500 space-y-1">
+                <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                  การอัปเดตข้อมูล Admin ชั่วคราว
+                </div>
                 <p className="text-[10px] text-slate-500 leading-normal">
-                  ระบบจะตรวจสอบคอลัมน์อัตโนมัติ และอัปเดตตารางเข้าสู่ระบบโดยไม่ต้องรีสตาร์ต
+                  เมื่อดึงข้อมูล Admin ผ่าน Apps Script บัญชีแอดมินจะถูกอัปเดตเข้าสู่ระบบและสามารถใช้เข้าสู่ระบบได้ทันที
                 </p>
               </div>
 

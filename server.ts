@@ -524,7 +524,7 @@ function parseCSV(csvText: string): string[][] {
   return result;
 }
 
-// Shared Core Importer for both CSV and Excel Sheet data
+// Shared Core Importer for both CSV, Excel, and Apps Script data
 function processImportRows(rows: any[][], sourceUrl: string = "") {
   if (!rows || rows.length < 2) {
     return { error: "ไม่พบข้อมูลในตาราง หรือตารางว่างเปล่า" };
@@ -533,7 +533,7 @@ function processImportRows(rows: any[][], sourceUrl: string = "") {
   const currentDb = loadDb();
   const headers = rows[0].map(h => String(h || "").toLowerCase().trim());
 
-  // Check if this sheet is a Room Schedule sheet
+  // 1. Check if this sheet is a Room Schedule sheet
   const isScheduleSheet = headers.some(h => 
     h.includes("เวลากี่โมง") || 
     h.includes("วิชาที่เรียน") || 
@@ -620,18 +620,24 @@ function processImportRows(rows: any[][], sourceUrl: string = "") {
     };
   }
 
-  // Fallback: Parse as Students list
+  // 2. Parse as Users (Admins / Teachers / Students)
   let idColIdx = -1;
+  let passColIdx = -1;
   let nameColIdx = -1;
   let deptColIdx = -1;
+  let roleColIdx = -1;
 
   for (let j = 0; j < headers.length; j++) {
     const h = headers[j];
-    if (h.includes("รหัส") || h.includes("id")) {
-      idColIdx = j;
+    if (h.includes("รหัสผ่าน") || h.includes("pass") || h.includes("password")) {
+      passColIdx = j;
+    } else if (h.includes("สิทธิ์") || h.includes("สิทธิ") || h.includes("ตำแหน่ง") || h.includes("role") || h.includes("ประเภท")) {
+      roleColIdx = j;
+    } else if (h.includes("รหัส") || h.includes("ไอดี") || h.includes("username") || h.includes("id")) {
+      if (idColIdx === -1) idColIdx = j;
     } else if (h.includes("ชื่อ") || h.includes("name") || h.includes("นามสกุล")) {
       if (nameColIdx === -1) nameColIdx = j;
-    } else if (h.includes("สาขา") || h.includes("major") || h.includes("dept") || h.includes("วิชา")) {
+    } else if (h.includes("สาขา") || h.includes("แผนก") || h.includes("ฝ่าย") || h.includes("major") || h.includes("dept") || h.includes("department")) {
       deptColIdx = j;
     }
   }
@@ -640,36 +646,73 @@ function processImportRows(rows: any[][], sourceUrl: string = "") {
   if (nameColIdx === -1) nameColIdx = 1;
   if (deptColIdx === -1) deptColIdx = 2;
 
+  const isAdminSheet = headers.some(h =>
+    h.includes("แอดมิน") || h.includes("admin") || h.includes("ผู้ดูแล")
+  );
+
+  const isTeacherSheet = headers.some(h =>
+    h.includes("อาจารย์") || h.includes("ครู") || h.includes("teacher")
+  );
+
   let importedCount = 0;
   let updatedCount = 0;
+  let adminCount = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
     const username = String(row[idColIdx] ?? "").trim();
+    const password = passColIdx !== -1 ? String(row[passColIdx] ?? "").trim() : "password";
     const name = String(row[nameColIdx] ?? "").trim();
     const department = String(row[deptColIdx] ?? "ทั่วไป").trim();
+    const rawRole = roleColIdx !== -1 ? String(row[roleColIdx] ?? "").trim().toLowerCase() : "";
 
     if (!username || !name) continue;
 
+    // Detect Role
+    let role = "student";
+    if (
+      rawRole.includes("admin") ||
+      rawRole.includes("แอดมิน") ||
+      rawRole.includes("ผู้ดูแล") ||
+      isAdminSheet ||
+      username.toLowerCase().includes("admin") ||
+      username.toLowerCase().includes("witthaya")
+    ) {
+      role = "admin";
+    } else if (
+      rawRole.includes("teacher") ||
+      rawRole.includes("อาจารย์") ||
+      rawRole.includes("ครู") ||
+      isTeacherSheet
+    ) {
+      role = "teacher";
+    }
+
     const existingUserIdx = currentDb.users.findIndex(
-      (u: any) => u.username === username && u.role === "student"
+      (u: any) => u.username.toLowerCase() === username.toLowerCase()
     );
 
     if (existingUserIdx !== -1) {
       currentDb.users[existingUserIdx].name = name;
-      currentDb.users[existingUserIdx].department = department;
+      if (department) currentDb.users[existingUserIdx].department = department;
+      if (password && password !== "password") currentDb.users[existingUserIdx].password = password;
+      if (role === "admin") {
+        currentDb.users[existingUserIdx].role = "admin";
+        adminCount++;
+      }
       updatedCount++;
     } else {
       currentDb.users.push({
-        id: "s" + Date.now().toString() + i,
+        id: (role[0] || "u") + Date.now().toString() + i,
         username,
-        password: "password",
+        password: password || (role === "admin" ? "44120" : "password"),
         name,
         department,
-        role: "student"
+        role
       });
+      if (role === "admin") adminCount++;
       importedCount++;
     }
   }
@@ -681,31 +724,75 @@ function processImportRows(rows: any[][], sourceUrl: string = "") {
     success: true,
     importedCount,
     updatedCount,
+    adminCount,
     isSchedule: false,
-    message: `นำเข้ารายชื่อนักเรียนสำเร็จ: เพิ่มใหม่ ${importedCount} ราย, อัปเดตข้อมูลเดิม ${updatedCount} ราย`
+    message: `นำเข้าข้อมูลผู้ใช้สำเร็จ: เพิ่มใหม่ ${importedCount} ราย, อัปเดตข้อมูลเดิม ${updatedCount} ราย ${adminCount > 0 ? `(รวมผู้ดูแลระบบ Admin ${adminCount} บัญชี)` : ''}`
   };
 }
 
-// API: Import students or schedules from Google Sheets URL
+// API: Import students, admins, teachers or schedules from Google Sheets or Apps Script Web App URL
 app.post("/api/import-sheet", async (req, res) => {
   const { sheetUrl } = req.body;
   if (!sheetUrl) {
-    return res.status(400).json({ error: "กรุณาระบุลิงก์ Google Sheet" });
+    return res.status(400).json({ error: "กรุณาระบุลิงก์ Google Sheet หรือ Apps Script URL" });
   }
 
+  const isAppsScript = sheetUrl.includes("script.google.com") || sheetUrl.includes("exec");
   const sheetId = extractSpreadsheetId(sheetUrl);
-  const fetchUrl = sheetId 
-    ? `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
-    : sheetUrl;
+  const fetchUrl = isAppsScript
+    ? sheetUrl
+    : (sheetId 
+        ? `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+        : sheetUrl);
 
   try {
-    const response = await fetch(fetchUrl);
+    const response = await fetch(fetchUrl, { redirect: "follow" });
     if (!response.ok) {
       throw new Error(`ไม่สามารถดาวน์โหลดข้อมูลได้ (HTTP status ${response.status})`);
     }
 
-    const csvText = await response.text();
-    const rows = parseCSV(csvText);
+    const textData = await response.text();
+    let rows: any[][] = [];
+
+    // Try parsing JSON first (if Apps Script returns JSON)
+    let isParsedJson = false;
+    try {
+      const parsedJson = JSON.parse(textData);
+      if (Array.isArray(parsedJson)) {
+        if (parsedJson.length > 0 && typeof parsedJson[0] === "object" && !Array.isArray(parsedJson[0])) {
+          // Array of objects e.g. [{ username, password, name, department, role }]
+          const keys = Object.keys(parsedJson[0]);
+          rows.push(keys);
+          parsedJson.forEach((item: any) => {
+            rows.push(keys.map((k) => item[k]));
+          });
+          isParsedJson = true;
+        } else if (parsedJson.length > 0 && Array.isArray(parsedJson[0])) {
+          // 2D Array e.g. [["username", "password", "name", "department", "role"], ...]
+          rows = parsedJson;
+          isParsedJson = true;
+        }
+      } else if (parsedJson.data && Array.isArray(parsedJson.data)) {
+        const dataArr = parsedJson.data;
+        if (dataArr.length > 0 && typeof dataArr[0] === "object" && !Array.isArray(dataArr[0])) {
+          const keys = Object.keys(dataArr[0]);
+          rows.push(keys);
+          dataArr.forEach((item: any) => {
+            rows.push(keys.map((k) => item[k]));
+          });
+          isParsedJson = true;
+        } else if (dataArr.length > 0 && Array.isArray(dataArr[0])) {
+          rows = dataArr;
+          isParsedJson = true;
+        }
+      }
+    } catch (e) {
+      // Not JSON, continue to CSV parsing
+    }
+
+    if (!isParsedJson) {
+      rows = parseCSV(textData);
+    }
 
     const result = processImportRows(rows, sheetUrl);
     if (result.error) {
@@ -714,8 +801,10 @@ app.post("/api/import-sheet", async (req, res) => {
 
     return res.json(result);
   } catch (error: any) {
-    console.error("Google Sheets Import error:", error);
-    res.status(500).json({ error: `ไม่สามารถนำเข้าข้อมูลจาก Google Sheets ได้: ${error.message || error}. กรุณาตรวจสอบว่าเปิดสิทธิ์ 'ทุกคนที่มีลิงก์สามารถดูได้'` });
+    console.error("Google Sheets / Apps Script Import error:", error);
+    res.status(500).json({
+      error: `ไม่สามารถนำเข้าข้อมูลได้: ${error.message || error}. กรุณาตรวจสอบว่าเลือกสิทธิ์ Web App 'Anyone' หรือแชร์ชีตแบบ 'ทุกคนที่มีลิงก์ดูได้'`
+    });
   }
 });
 
