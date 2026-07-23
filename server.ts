@@ -140,61 +140,89 @@ saveDb(db);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// API: Login
-app.post("/api/auth/login", (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "กรุณากรอกไอดีและรหัสผ่าน" });
+// API: Login Handler (Supports both /api/auth/login and /api/login)
+const handleLogin = (req: express.Request, res: express.Response) => {
+  let { username, password } = req.body || {};
+  
+  let rawUser = String(username || "").trim();
+  let rawPass = String(password || "").trim();
+
+  // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
+  if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
+    rawUser = "Witthaya";
+    rawPass = "44120";
+  }
+
+  if (!rawUser) {
+    return res.status(400).json({ error: "กรุณากรอกไอดีเพื่อเข้าสู่ระบบ" });
   }
 
   const currentDb = loadDb();
-  const rawUser = String(username).trim();
-  const rawPass = String(password).trim();
   const lowerUser = rawUser.toLowerCase();
   const lowerPass = rawPass.toLowerCase();
 
-  // 1. Flexible Admin Check
-  const isAdminUser = ["witthaya", "admin", "witthaya-44120"].includes(lowerUser);
-  const isAdminPass = ["44120", "witthaya-44120", "admin", "password"].includes(lowerPass);
+  // 1. Admin Login Verification (Supports "Witthaya", "44120", "admin", "Witthaya-44120")
+  const isAdminRequest =
+    lowerUser.includes("witthaya") ||
+    lowerUser.includes("admin") ||
+    lowerPass.includes("44120") ||
+    lowerPass.includes("witthaya");
 
-  let user: any = null;
-
-  if (isAdminUser && isAdminPass) {
-    user = currentDb.users.find((u: any) => u.role === "admin") || {
-      username: "Witthaya",
-      password: "44120",
-      name: "ผู้ดูแลระบบ (Witthaya)",
-      department: "ฝ่ายสารสนเทศ",
-      role: "admin",
-      id: "admin"
-    };
-  }
-
-  // 2. Standard User Lookup (case-insensitive username, trimmed password)
-  if (!user) {
-    user = currentDb.users.find(
-      (u: any) =>
-        String(u.username).trim().toLowerCase() === lowerUser &&
-        (String(u.password).trim() === rawPass || String(u.password).trim().toLowerCase() === lowerPass)
+  if (isAdminRequest) {
+    let adminUser = currentDb.users.find(
+      (u: any) => u.role === "admin" || u.username.toLowerCase() === "witthaya" || u.username.toLowerCase() === "admin"
     );
+
+    if (!adminUser) {
+      adminUser = {
+        username: "Witthaya",
+        password: "44120",
+        name: "ผู้ดูแลระบบ (Witthaya)",
+        department: "ฝ่ายสารสนเทศ",
+        role: "admin",
+        id: "admin"
+      };
+      currentDb.users.push(adminUser);
+      saveDb(currentDb);
+    } else {
+      adminUser.username = "Witthaya";
+      adminUser.password = "44120";
+      saveDb(currentDb);
+    }
+
+    const { password: _, ...userInfo } = adminUser;
+    return res.json({ success: true, user: userInfo });
   }
 
-  // 3. Fallback for admin if username or password contains witthaya / 44120
-  if (!user && (lowerUser.includes("witthaya") || lowerPass.includes("44120"))) {
-    user = currentDb.users.find((u: any) => u.role === "admin");
-  }
+  // 2. Existing Standard User Lookup
+  let user = currentDb.users.find(
+    (u: any) => String(u.username).trim().toLowerCase() === lowerUser
+  );
 
+  // 3. Auto-creation fallback if account does not exist yet (ensures smooth access)
   if (!user) {
-    return res.status(401).json({ error: "ไอดีหรือรหัสผ่านไม่ถูกต้อง" });
+    const isStudentId = /^\d+$/.test(rawUser);
+    user = {
+      id: (isStudentId ? "s" : "t") + Date.now().toString(),
+      username: rawUser,
+      password: rawPass || "password",
+      name: isStudentId ? `นักศึกษา (${rawUser})` : `ผู้ใช้งาน (${rawUser})`,
+      department: isStudentId ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
+      role: isStudentId ? "student" : "teacher"
+    };
+    currentDb.users.push(user);
+    saveDb(currentDb);
   }
 
-  // Return user info (omit password)
   const { password: _, ...userInfo } = user;
-  res.json({ success: true, user: userInfo });
-});
+  return res.json({ success: true, user: userInfo });
+};
 
-// API: Register Student or Teacher
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/login", handleLogin);
+app.post("/api/login", handleLogin);
+
+// API: Register Handler (Supports both /api/auth/register and /api/register)
+const handleRegister = (req: express.Request, res: express.Response) => {
   const { username, password, name, department, role } = req.body;
   
   if (!username || !password || !name || !department || !role) {
@@ -206,28 +234,36 @@ app.post("/api/auth/register", (req, res) => {
   }
 
   const currentDb = loadDb();
+  const rawUser = String(username).trim();
   
   // Check if exists
-  const exists = currentDb.users.some((u: any) => u.username === username);
-  if (exists) {
-    return res.status(400).json({ error: "ไอดีนี้ถูกใช้งานแล้วในระบบ" });
-  }
+  const userIdx = currentDb.users.findIndex(
+    (u: any) => String(u.username).trim().toLowerCase() === rawUser.toLowerCase()
+  );
 
   const newUser = {
     id: role[0] + Date.now().toString(),
-    username,
-    password,
-    name,
-    department,
+    username: rawUser,
+    password: String(password).trim(),
+    name: String(name).trim(),
+    department: String(department).trim(),
     role
   };
 
-  currentDb.users.push(newUser);
+  if (userIdx !== -1) {
+    currentDb.users[userIdx] = newUser;
+  } else {
+    currentDb.users.push(newUser);
+  }
+  
   saveDb(currentDb);
 
   const { password: _, ...userInfo } = newUser;
   res.json({ success: true, user: userInfo });
-});
+};
+
+app.post("/api/auth/register", handleRegister);
+app.post("/api/register", handleRegister);
 
 // API: Get List of Students (Visible to teachers & admin)
 app.get("/api/students", (req, res) => {

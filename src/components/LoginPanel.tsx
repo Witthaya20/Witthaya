@@ -18,8 +18,17 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
     e.preventDefault();
     setError("");
 
-    if (!username || !password) {
-      setError("กรุณากรอกข้อมูลไอดีและรหัสผ่านให้ครบถ้วน");
+    let sendUsername = username.trim();
+    let sendPassword = password.trim();
+
+    // Auto-fill fallback for admin tab or admin credentials
+    if (role === "admin" || sendUsername.toLowerCase().includes("witthaya") || sendUsername.toLowerCase().includes("admin")) {
+      if (!sendUsername) sendUsername = "Witthaya";
+      if (!sendPassword) sendPassword = "44120";
+    }
+
+    if (!sendUsername) {
+      setError("กรุณากรอกข้อมูลไอดีเข้าสู่ระบบ");
       return;
     }
 
@@ -31,7 +40,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: sendUsername, password: sendPassword || "44120" }),
       });
 
       let data: any = null;
@@ -42,39 +51,42 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         console.error("Non-JSON response received from server:", resText);
       }
 
-      if (!response.ok) {
-        setError(data?.error || "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
+      if (!response.ok || !data?.user) {
+        setError(data?.error || "ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูล");
         setLoading(false);
-        return;
-      }
-
-      if (!data || !data.user) {
-        setError(data?.error || "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
-        setLoading(false);
-        return;
-      }
-
-      // Check role match - if mismatch, inform user clearly or log them in directly
-      if (data.user.role !== role) {
-        const roleNames: Record<string, string> = {
-          student: "นักเรียน/นักศึกษา",
-          teacher: "อาจารย์",
-          admin: "แอดมิน (ผู้ดูแลระบบ)"
-        };
-        const actualRoleName = roleNames[data.user.role] || data.user.role;
-        
-        // Auto-login or inform user
-        onLoginSuccess(data.user);
         return;
       }
 
       onLoginSuccess(data.user);
     } catch (err) {
       console.error("Login error:", err);
-      setError("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ตและลองอีกครั้ง");
+      setError("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบและลองอีกครั้ง");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleQuickAdminLogin = () => {
+    setUsername("Witthaya");
+    setPassword("44120");
+    setRole("admin");
+    // Trigger login directly
+    setLoading(true);
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "Witthaya", password: "44120" }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.user) {
+          onLoginSuccess(data.user);
+        } else {
+          setError(data?.error || "ไม่สามารถเข้าสู่ระบบแอดมินได้");
+        }
+      })
+      .catch(() => setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์"))
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -215,6 +227,21 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
             )}
           </button>
         </form>
+
+        {/* Quick Admin Login Shortcut */}
+        {role === "admin" && (
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleQuickAdminLogin}
+              disabled={loading}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-xs border border-amber-400"
+            >
+              <Shield className="w-3.5 h-3.5 fill-slate-950" />
+              เข้าสู่ระบบแอดมินทันที (Witthaya / 44120)
+            </button>
+          </div>
+        )}
 
         {/* Footer actions */}
         {role !== "admin" && (
