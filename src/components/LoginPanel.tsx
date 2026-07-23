@@ -149,13 +149,20 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
-              {role === "student"
-                ? "Username / Student ID"
-                : role === "teacher"
-                ? "Username / Teacher ID"
-                : "Admin ID"}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
+                {role === "student"
+                  ? "Username / Student ID"
+                  : role === "teacher"
+                  ? "Username / Teacher ID"
+                  : "Admin ID"}
+              </label>
+              {role === "admin" && (
+                <span className="text-[10px] text-indigo-600 font-semibold font-mono bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                  ID: Witthaya
+                </span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type="text"
@@ -163,10 +170,10 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder={
                   role === "student"
-                    ? "รหัสนักศึกษา"
+                    ? "รหัสนักศึกษา (เช่น 64012345)"
                     : role === "teacher"
-                    ? "ไอดีอาจารย์"
-                    : "ไอดีแอดมิน"
+                    ? "ไอดีอาจารย์ (เช่น teacher1)"
+                    : "Witthaya หรือ admin"
                 }
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition font-medium text-xs focus:ring-1 focus:ring-indigo-500"
               />
@@ -176,13 +183,18 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Password / รหัสผ่าน</label>
+              {role === "admin" && (
+                <span className="text-[10px] text-amber-700 font-semibold font-mono bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                  PASS: 44120
+                </span>
+              )}
             </div>
             <div className="relative">
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={role === "admin" ? "44120" : "••••••••"}
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition font-medium text-xs font-mono focus:ring-1 focus:ring-indigo-500"
               />
             </div>

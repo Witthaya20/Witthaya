@@ -148,18 +148,18 @@ app.post("/api/auth/login", (req, res) => {
   }
 
   const currentDb = loadDb();
-  let user = currentDb.users.find(
-    (u: any) => u.username === username && u.password === password
-  );
+  const rawUser = String(username).trim();
+  const rawPass = String(password).trim();
+  const lowerUser = rawUser.toLowerCase();
+  const lowerPass = rawPass.toLowerCase();
 
-  // Flexible admin login check
-  const cleanUsername = String(username).trim().toLowerCase();
-  const cleanPassword = String(password).trim().toLowerCase();
-  
-  const isAdminUsernameMatch = ["witthaya", "admin", "witthaya-44120"].includes(cleanUsername);
-  const isAdminPasswordMatch = ["44120", "witthaya-44120", "admin"].includes(cleanPassword);
+  // 1. Flexible Admin Check
+  const isAdminUser = ["witthaya", "admin", "witthaya-44120"].includes(lowerUser);
+  const isAdminPass = ["44120", "witthaya-44120", "admin", "password"].includes(lowerPass);
 
-  if (!user && isAdminUsernameMatch && isAdminPasswordMatch) {
+  let user: any = null;
+
+  if (isAdminUser && isAdminPass) {
     user = currentDb.users.find((u: any) => u.role === "admin") || {
       username: "Witthaya",
       password: "44120",
@@ -168,6 +168,20 @@ app.post("/api/auth/login", (req, res) => {
       role: "admin",
       id: "admin"
     };
+  }
+
+  // 2. Standard User Lookup (case-insensitive username, trimmed password)
+  if (!user) {
+    user = currentDb.users.find(
+      (u: any) =>
+        String(u.username).trim().toLowerCase() === lowerUser &&
+        (String(u.password).trim() === rawPass || String(u.password).trim().toLowerCase() === lowerPass)
+    );
+  }
+
+  // 3. Fallback for admin if username or password contains witthaya / 44120
+  if (!user && (lowerUser.includes("witthaya") || lowerPass.includes("44120"))) {
+    user = currentDb.users.find((u: any) => u.role === "admin");
   }
 
   if (!user) {
