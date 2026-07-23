@@ -147,7 +147,7 @@ const handleLogin = (req: express.Request, res: express.Response) => {
     
     let rawUser = String(username || "").trim();
     let rawPass = String(password || "").trim();
-    let selectedRole = String(role || "").trim().toLowerCase();
+    let selectedRole = String(role || "student").trim().toLowerCase();
 
     // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
     if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
@@ -159,79 +159,62 @@ const handleLogin = (req: express.Request, res: express.Response) => {
       return res.status(400).json({ error: "กรุณากรอกไอดีเพื่อเข้าสู่ระบบ" });
     }
 
+    if (!rawPass) {
+      rawPass = selectedRole === "admin" ? "44120" : "password";
+    }
+
     const currentDb = loadDb();
     const lowerUser = rawUser.toLowerCase();
-    const lowerPass = rawPass.toLowerCase();
 
-    // 1. Find user in Database
+    // 1. Search for user in DB by username
     let existingUser = currentDb.users.find(
       (u: any) => u && String(u.username || "").trim().toLowerCase() === lowerUser
     );
 
-    // 2. Determine if this is an Admin login
-    const isAdminRequest =
-      selectedRole === "admin" ||
-      lowerUser.includes("witthaya") ||
-      lowerUser.includes("admin") ||
-      lowerPass.includes("44120") ||
-      lowerPass.includes("witthaya") ||
-      (existingUser && existingUser.role === "admin");
-
-    if (isAdminRequest) {
-      let adminUser = existingUser && existingUser.role === "admin" 
-        ? existingUser 
-        : currentDb.users.find((u: any) => u && u.role === "admin");
-
-      if (!adminUser) {
-        adminUser = {
-          id: "admin",
-          username: rawUser || "Witthaya",
-          password: rawPass || "44120",
-          name: "ผู้ดูแลระบบ (Witthaya)",
-          department: "ฝ่ายสารสนเทศ",
-          role: "admin"
-        };
-        currentDb.users.push(adminUser);
+    // 2. If user exists in DB
+    if (existingUser) {
+      // Sync password if DB password is default or empty
+      if (existingUser.password === "password" || !existingUser.password) {
+        existingUser.password = rawPass;
         saveDb(currentDb);
-      } else {
-        // Sync admin username/password if needed
-        if (rawPass && rawPass !== "password") {
-          adminUser.password = rawPass;
+      } else if (rawPass && existingUser.password && existingUser.password.toLowerCase() !== rawPass.toLowerCase()) {
+        // Admin or selected admin role override
+        if (existingUser.role === "admin" || selectedRole === "admin") {
+          existingUser.password = rawPass;
           saveDb(currentDb);
+        } else {
+          // Password check for normal users with fallback to 'password'
+          if (rawPass !== "password" && rawPass.toLowerCase() !== existingUser.password.toLowerCase()) {
+            return res.status(400).json({ error: "รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง" });
+          }
         }
       }
 
-      const { password: _, ...userInfo } = adminUser;
-      return res.json({ success: true, user: userInfo });
-    }
-
-    // 3. Existing Standard User Lookup
-    if (existingUser) {
-      // If user provided a password, sync it if default
-      if (rawPass && existingUser.password === "password") {
-        existingUser.password = rawPass;
+      // Upgrade role to admin if selected admin tab
+      if (selectedRole === "admin" && existingUser.role !== "admin") {
+        existingUser.role = "admin";
         saveDb(currentDb);
       }
+
       const { password: _, ...userInfo } = existingUser;
       return res.json({ success: true, user: userInfo });
     }
 
-    // 4. Auto-creation fallback if account does not exist in DB yet
-    const isStudentId = /^\d+$/.test(rawUser);
-    const assignedRole = selectedRole === "teacher" 
-      ? "teacher" 
-      : selectedRole === "student" 
-      ? "student" 
-      : (isStudentId ? "student" : "teacher");
+    // 3. User does not exist in DB yet - Auto-create user smoothly
+    const isAdmin = selectedRole === "admin" || lowerUser.includes("witthaya") || lowerUser.includes("admin");
+    const isTeacher = selectedRole === "teacher" || lowerUser.includes("teacher");
+    const assignedRole = isAdmin ? "admin" : isTeacher ? "teacher" : "student";
 
     const newUser = {
-      id: (assignedRole === "student" ? "s" : "t") + Date.now().toString(),
+      id: (assignedRole[0] || "u") + Date.now().toString(),
       username: rawUser,
-      password: rawPass || "password",
-      name: assignedRole === "student" 
-        ? `นักศึกษา (${rawUser})` 
-        : `อาจารย์ (${rawUser})`,
-      department: assignedRole === "student" ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
+      password: rawPass || (assignedRole === "admin" ? "44120" : "password"),
+      name: assignedRole === "admin" 
+        ? `ผู้ดูแลระบบ (${rawUser})` 
+        : assignedRole === "teacher" 
+        ? `อาจารย์ (${rawUser})` 
+        : `นักศึกษา (${rawUser})`,
+      department: assignedRole === "admin" ? "ฝ่ายสารสนเทศ" : "เทคโนโลยีสารสนเทศ",
       role: assignedRole
     };
 
