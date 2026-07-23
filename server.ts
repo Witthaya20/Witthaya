@@ -98,19 +98,21 @@ function loadDb() {
     if (!parsed.settings) parsed.settings = { ...initialDb.settings };
     if (!parsed.roomSchedules || !Array.isArray(parsed.roomSchedules)) parsed.roomSchedules = [];
     
-    // Ensure admin user exists with password 'admin' (also supports '44120' or custom password)
-    let adminUser = parsed.users.find((u: any) => u.username === "admin");
+    // Ensure admin user exists with username Witthaya and password 44120
+    let adminUser = parsed.users.find((u: any) => u.role === "admin" || u.username === "admin" || u.username === "Witthaya");
     if (!adminUser) {
-      parsed.users.push({
-        username: "admin",
-        password: "admin",
-        name: "ผู้ดูแลระบบ (Admin)",
+      adminUser = {
+        username: "Witthaya",
+        password: "44120",
+        name: "ผู้ดูแลระบบ (Witthaya)",
         department: "ฝ่ายสารสนเทศ",
         role: "admin",
         id: "admin"
-      });
-    } else if (!adminUser.password) {
-      adminUser.password = "admin";
+      };
+      parsed.users.push(adminUser);
+    } else {
+      adminUser.username = "Witthaya";
+      adminUser.password = "44120";
     }
     
     return parsed;
@@ -150,9 +152,22 @@ app.post("/api/auth/login", (req, res) => {
     (u: any) => u.username === username && u.password === password
   );
 
-  // Flexible admin password check
-  if (!user && username === "admin" && (password === "admin" || password === "44120")) {
-    user = currentDb.users.find((u: any) => u.username === "admin");
+  // Flexible admin login check
+  const cleanUsername = String(username).trim().toLowerCase();
+  const cleanPassword = String(password).trim().toLowerCase();
+  
+  const isAdminUsernameMatch = ["witthaya", "admin", "witthaya-44120"].includes(cleanUsername);
+  const isAdminPasswordMatch = ["44120", "witthaya-44120", "admin"].includes(cleanPassword);
+
+  if (!user && isAdminUsernameMatch && isAdminPasswordMatch) {
+    user = currentDb.users.find((u: any) => u.role === "admin") || {
+      username: "Witthaya",
+      password: "44120",
+      name: "ผู้ดูแลระบบ (Witthaya)",
+      department: "ฝ่ายสารสนเทศ",
+      role: "admin",
+      id: "admin"
+    };
   }
 
   if (!user) {
