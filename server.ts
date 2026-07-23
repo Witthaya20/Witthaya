@@ -143,10 +143,11 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // API: Login Handler (Supports both /api/auth/login and /api/login)
 const handleLogin = (req: express.Request, res: express.Response) => {
   try {
-    let { username, password } = req.body || {};
+    let { username, password, role } = req.body || {};
     
     let rawUser = String(username || "").trim();
     let rawPass = String(password || "").trim();
+    let selectedRole = String(role || "").trim().toLowerCase();
 
     // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
     if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
@@ -162,60 +163,82 @@ const handleLogin = (req: express.Request, res: express.Response) => {
     const lowerUser = rawUser.toLowerCase();
     const lowerPass = rawPass.toLowerCase();
 
-    // 1. Admin Login Verification (Supports "Witthaya", "44120", "admin", "Witthaya-44120")
+    // 1. Find user in Database
+    let existingUser = currentDb.users.find(
+      (u: any) => u && String(u.username || "").trim().toLowerCase() === lowerUser
+    );
+
+    // 2. Determine if this is an Admin login
     const isAdminRequest =
+      selectedRole === "admin" ||
       lowerUser.includes("witthaya") ||
       lowerUser.includes("admin") ||
       lowerPass.includes("44120") ||
-      lowerPass.includes("witthaya");
+      lowerPass.includes("witthaya") ||
+      (existingUser && existingUser.role === "admin");
 
     if (isAdminRequest) {
-      let adminUser = currentDb.users.find(
-        (u: any) => u && (u.role === "admin" || String(u.username || "").toLowerCase() === "witthaya" || String(u.username || "").toLowerCase() === "admin")
-      );
+      let adminUser = existingUser && existingUser.role === "admin" 
+        ? existingUser 
+        : currentDb.users.find((u: any) => u && u.role === "admin");
 
       if (!adminUser) {
         adminUser = {
-          username: "Witthaya",
-          password: "44120",
+          id: "admin",
+          username: rawUser || "Witthaya",
+          password: rawPass || "44120",
           name: "ผู้ดูแลระบบ (Witthaya)",
           department: "ฝ่ายสารสนเทศ",
-          role: "admin",
-          id: "admin"
+          role: "admin"
         };
         currentDb.users.push(adminUser);
         saveDb(currentDb);
       } else {
-        adminUser.username = "Witthaya";
-        adminUser.password = "44120";
-        saveDb(currentDb);
+        // Sync admin username/password if needed
+        if (rawPass && rawPass !== "password") {
+          adminUser.password = rawPass;
+          saveDb(currentDb);
+        }
       }
 
       const { password: _, ...userInfo } = adminUser;
       return res.json({ success: true, user: userInfo });
     }
 
-    // 2. Existing Standard User Lookup
-    let user = currentDb.users.find(
-      (u: any) => u && String(u.username || "").trim().toLowerCase() === lowerUser
-    );
-
-    // 3. Auto-creation fallback if account does not exist yet (ensures smooth access)
-    if (!user) {
-      const isStudentId = /^\d+$/.test(rawUser);
-      user = {
-        id: (isStudentId ? "s" : "t") + Date.now().toString(),
-        username: rawUser,
-        password: rawPass || "password",
-        name: isStudentId ? `นักศึกษา (${rawUser})` : `ผู้ใช้งาน (${rawUser})`,
-        department: isStudentId ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
-        role: isStudentId ? "student" : "teacher"
-      };
-      currentDb.users.push(user);
-      saveDb(currentDb);
+    // 3. Existing Standard User Lookup
+    if (existingUser) {
+      // If user provided a password, sync it if default
+      if (rawPass && existingUser.password === "password") {
+        existingUser.password = rawPass;
+        saveDb(currentDb);
+      }
+      const { password: _, ...userInfo } = existingUser;
+      return res.json({ success: true, user: userInfo });
     }
 
-    const { password: _, ...userInfo } = user;
+    // 4. Auto-creation fallback if account does not exist in DB yet
+    const isStudentId = /^\d+$/.test(rawUser);
+    const assignedRole = selectedRole === "teacher" 
+      ? "teacher" 
+      : selectedRole === "student" 
+      ? "student" 
+      : (isStudentId ? "student" : "teacher");
+
+    const newUser = {
+      id: (assignedRole === "student" ? "s" : "t") + Date.now().toString(),
+      username: rawUser,
+      password: rawPass || "password",
+      name: assignedRole === "student" 
+        ? `นักศึกษา (${rawUser})` 
+        : `อาจารย์ (${rawUser})`,
+      department: assignedRole === "student" ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
+      role: assignedRole
+    };
+
+    currentDb.users.push(newUser);
+    saveDb(currentDb);
+
+    const { password: _, ...userInfo } = newUser;
     return res.json({ success: true, user: userInfo });
   } catch (err: any) {
     console.error("Login error in server:", err);

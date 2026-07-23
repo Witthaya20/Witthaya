@@ -39,7 +39,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username: sendUsername, password: sendPassword }),
+        body: JSON.stringify({ username: sendUsername, password: sendPassword, role }),
       });
 
       let data: any = null;
