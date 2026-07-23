@@ -443,7 +443,7 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
           }`}
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-          นำเข้า Google Sheet
+          จัดการ Excel & Google Sheets
         </button>
         <button
           onClick={() => {
@@ -535,101 +535,111 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
       {activeTab === "sheets" && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Main Sheet URL input */}
-            <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-4 shadow-sm space-y-4">
-              <div className="border-b border-slate-150 pb-2 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    ดึงฐานข้อมูล / ตารางการใช้ห้อง จาก Google Sheets
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">นำเข้าทั้งรายชื่อนักเรียน หรือตารางการใช้งานห้องเรียนได้ทันที</p>
+            
+            {/* Main Column 1 & 2: Google Sheet Link */}
+            <div className="lg:col-span-2 space-y-4">
+              
+              {/* Box: Google Sheets URL link */}
+              <div className="bg-white rounded-lg border border-indigo-200 p-4 shadow-sm space-y-3">
+                <div className="border-b border-slate-150 pb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                      <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+                      เชื่อมโยงตารางผ่าน Google Sheets ออนไลน์
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">วาง URL ของ Google Sheets เพื่อดึงตารางเรียนหรือรายชื่อนักเรียนเข้าระบบ</p>
+                  </div>
                 </div>
+
+                <form onSubmit={handleImportSheet} className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">ลิงก์ Google Sheets ของคุณ</label>
+                    <input
+                      type="url"
+                      value={sheetUrl}
+                      onChange={(e) => setSheetUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit?usp=sharing"
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-1.5 px-3 outline-none text-slate-800 transition text-xs"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={importLoading || !sheetUrl}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-2 px-3 rounded shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                  >
+                    {importLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        กำลังประมวลผลข้อมูล...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                        ดึงและประมวลผลข้อมูลจาก Google Sheets
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
-
-              <form onSubmit={handleImportSheet} className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">ลิงก์ Google Sheets ของคุณ</label>
-                  <input
-                    type="url"
-                    value={sheetUrl}
-                    onChange={(e) => setSheetUrl(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit?usp=sharing"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-1.5 px-3 outline-none text-slate-800 transition text-xs"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={importLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-2 px-3 rounded shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer text-xs"
-                >
-                  {importLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      กำลังดาวน์โหลดและนำเข้าข้อมูลจาก Sheet...
-                    </>
-                  ) : (
-                    <>
-                      <FileSpreadsheet className="w-4 h-4" />
-                      ดึงและประมวลผลข้อมูล Google Sheets
-                    </>
-                  )}
-                </button>
-              </form>
 
               {/* Step-by-Step Instructions */}
               <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2.5 text-xs">
                 <h4 className="font-bold text-slate-700 flex items-center gap-1.5 font-display text-xs uppercase tracking-wider">
                   <Shield className="w-4 h-4 text-amber-500" />
-                  วิธีการเตรียมเอกสาร Google Sheets ให้รองรับการนำเข้า
+                  รูปแบบหัวตาราง Google Sheets ที่รองรับการอ่านอัตโนมัติ
                 </h4>
-                <div className="space-y-2.5">
-                  <div className="border-b border-slate-200 pb-2">
-                    <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-100">รูปแบบที่ 1: รายชื่อนักศึกษาเข้าใช้งาน</span>
-                    <ul className="list-disc list-inside pl-2 mt-1.5 space-y-1 text-slate-500 text-[11px]">
-                      <li><strong className="text-slate-700">รหัสนักศึกษา</strong> (หรือ ID / รหัส)</li>
-                      <li><strong className="text-slate-700">ชื่อ-นามสกุล</strong> (หรือ Name / ชื่อ)</li>
-                      <li><strong className="text-slate-700">สาขาวิชา</strong> (หรือ Major / แผนก / แผนกวิชา)</li>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-white p-2.5 rounded border border-slate-200">
+                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">ตารางเวลาการใช้ห้อง</span>
+                    <ul className="list-disc list-inside mt-1.5 space-y-1 text-slate-600 text-[11px]">
+                      <li><strong>เวลากี่โมง</strong> (เช่น 08:30 - 10:30)</li>
+                      <li><strong>ชื่อคนใช้</strong> (เช่น อาจารย์สมชาย ใจดี)</li>
+                      <li><strong>วิชาที่เรียน</strong> (เช่น การเขียนโปรแกรม)</li>
+                      <li><strong>ห้องที่ใช้</strong> (เช่น Lab 401)</li>
+                      <li><strong>จำนวนนักเรียน</strong> (เช่น 35)</li>
+                      <li><strong>สถานะห้องว่างไม่ว่าง</strong> (เช่น ว่าง / ไม่ว่าง)</li>
                     </ul>
                   </div>
                   
-                  <div className="border-b border-slate-200 pb-2">
-                    <span className="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-100">รูปแบบที่ 2: ตารางการใช้ห้องพักครู/ห้องเรียน</span>
-                    <ul className="list-disc list-inside pl-2 mt-1.5 space-y-1 text-slate-500 text-[11px]">
-                      <li><strong className="text-slate-700">เวลากี่โมง</strong> (หรือ เวลา / Time)</li>
-                      <li><strong className="text-slate-700">ชื่อคนใช้</strong> (หรือ ผู้ใช้ / User / Name)</li>
-                      <li><strong className="text-slate-700">วิชาที่เรียน</strong> (หรือ วิชา / Subject / Course)</li>
-                      <li><strong className="text-slate-700">ห้องที่ใช้</strong> (หรือ ห้อง / Room)</li>
-                      <li><strong className="text-slate-700">จำนวนนักเรียน</strong> (หรือ จำนวน / Students / Count)</li>
-                      <li><strong className="text-slate-700">สถานะห้องว่างไม่ว่าง</strong> (หรือ สถานะ / Status)</li>
+                  <div className="bg-white p-2.5 rounded border border-slate-200">
+                    <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded text-[10px] font-bold">รายชื่อนักศึกษา</span>
+                    <ul className="list-disc list-inside mt-1.5 space-y-1 text-slate-600 text-[11px]">
+                      <li><strong>รหัสนักศึกษา</strong> (เช่น 65010001)</li>
+                      <li><strong>ชื่อ-นามสกุล</strong> (เช่น นายสมศักดิ์ ขยัน)</li>
+                      <li><strong>สาขาวิชา</strong> (เช่น เทคโนโลยีสารสนเทศ)</li>
                     </ul>
                   </div>
-
-                  <ol className="list-decimal list-inside space-y-1.5 text-slate-600 leading-normal pt-1 text-[11px]">
-                    <li>ระบุหัวตารางในแถวแรกสุด (แถวที่ 1) ตามคำหลักด้านบน</li>
-                    <li>กดปุ่ม <strong>แชร์ (Share)</strong> มุมขวาบนของเอกสาร</li>
-                    <li>เปลี่ยนสิทธิ์การเข้าถึงทั่วไปจาก <strong>จำกัด (Restricted)</strong> เป็น <strong>"ทุกคนที่มีลิงก์ (Anyone with link)"</strong> (ผู้มีสิทธิ์อ่าน / Viewer)</li>
-                    <li>คัดลอกลิงก์ด้านบนมาวางในช่องและกดบันทึก</li>
-                  </ol>
                 </div>
               </div>
             </div>
 
-            {/* Quick Demo Preview Info */}
-            <div className="bg-indigo-950 text-white rounded-lg p-4 shadow-sm flex flex-col justify-between text-xs">
-              <div className="space-y-3">
-                <span className="text-[9px] bg-indigo-500/40 text-indigo-200 font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                  ความสอดคล้องข้อมูล
-                </span>
-                <h4 className="text-sm font-bold font-display leading-snug">ระบบจะวิเคราะห์หัวตารางให้อัตโนมัติ</h4>
-                <p className="text-[11px] text-indigo-200 leading-normal">
-                  ระบบจะทำการตรวจสอบหัวตารางอัตโนมัติ หากพบคำที่เกี่ยวข้องกับ "เวลากี่โมง", "ชื่อคนใช้", "วิชาที่เรียน" จะสลับเข้าสู่โหมดนำเข้าตารางการใช้ห้องพักครูทันที และแสดงผลตารางเรียน ตารางใช้งานล่าสุดบนหน้าจอเรียลไทม์
+            {/* Column 3: Instructions & Notes */}
+            <div className="space-y-4">
+              
+              <div className="bg-slate-900 text-white rounded-lg p-4 shadow-sm space-y-3">
+                <div className="flex items-center gap-1.5 border-b border-slate-700 pb-2">
+                  <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-white font-display">
+                    วิธีตั้งค่าแชร์ Google Sheets
+                  </h4>
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                  <li>เปิดไฟล์ Google Sheets ของคุณ</li>
+                  <li>คลิกปุ่ม <strong className="text-white">แชร์ (Share)</strong> มุมบนขวา</li>
+                  <li>เปลี่ยนสิทธิ์จาก 'จำกัด' เป็น <strong className="text-amber-300">'ทุกคนที่มีลิงก์' (Anyone with link)</strong></li>
+                  <li>คัดลอก URL ของหน้าเว็บมาวางในช่องและกดประมวลผล</li>
+                </ol>
+              </div>
+
+              {/* Status Note */}
+              <div className="bg-white rounded-lg border border-slate-200 p-3.5 text-xs text-slate-500 space-y-1">
+                <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">อัปเดตข้อมูลอัตโนมัติ</div>
+                <p className="text-[10px] text-slate-500 leading-normal">
+                  ระบบจะตรวจสอบคอลัมน์อัตโนมัติ และอัปเดตตารางเข้าสู่ระบบโดยไม่ต้องรีสตาร์ต
                 </p>
               </div>
-              <div className="pt-4 border-t border-white/10 text-[10px] text-indigo-300 italic">
-                *การดึงข้อมูลทับระบบเดิมจะไม่ทำให้ประวัติการเช็คอินหายไป
-              </div>
+
             </div>
           </div>
 

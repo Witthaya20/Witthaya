@@ -48,11 +48,15 @@ export default function RegisterPanel({ onRegisterSuccess, onBackToLogin }: Regi
         }),
       });
 
-      const data = await response.ok ? await response.json() : null;
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        data = null;
+      }
 
       if (!response.ok) {
-        const errorData = await response.json();
-        setError(errorData.error || "ไม่สามารถลงทะเบียนได้เนื่องจากข้อมูลซ้ำหรือโครงสร้างไม่ถูกต้อง");
+        setError(data?.error || "ไม่สามารถลงทะเบียนได้เนื่องจากข้อมูลซ้ำหรือโครงสร้างไม่ถูกต้อง");
         setLoading(false);
         return;
       }

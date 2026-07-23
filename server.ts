@@ -8,11 +8,18 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const DB_PATH = path.join(process.cwd(), "data", "db.json");
 
-// Ensure data directory and db.json exist
-if (!fs.existsSync(path.join(process.cwd(), "data"))) {
-  fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+const isVercel = Boolean(process.env.VERCEL);
+const DB_DIR = isVercel ? path.join("/tmp", "data") : path.join(process.cwd(), "data");
+const DB_PATH = path.join(DB_DIR, "db.json");
+
+// Ensure data directory exists
+if (!fs.existsSync(DB_DIR)) {
+  try {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  } catch (e) {
+    console.error("Failed to create DB directory:", e);
+  }
 }
 
 // Initial/default database structure
@@ -68,7 +75,8 @@ const initialDb = {
   settings: {
     googleSheetUrl: "",
     roomStatus: "auto"
-  }
+  },
+  roomSchedules: []
 };
 
 // Check and fix the DB if it is empty or missing admin
@@ -76,36 +84,36 @@ function loadDb() {
   try {
     if (!fs.existsSync(DB_PATH)) {
       fs.writeFileSync(DB_PATH, JSON.stringify(initialDb, null, 2), "utf8");
-      return initialDb;
+      return JSON.parse(JSON.stringify(initialDb));
     }
     const data = fs.readFileSync(DB_PATH, "utf8");
-    const parsed = JSON.parse(data);
+    const parsed = JSON.parse(data) || {};
     
-    // Ensure admin password is correct per user request: "ID = admin password = 44120"
+    // Ensure basic structure
+    if (!parsed.users || !Array.isArray(parsed.users)) parsed.users = [...initialDb.users];
+    if (!parsed.checkIns || !Array.isArray(parsed.checkIns)) parsed.checkIns = [...initialDb.checkIns];
+    if (!parsed.settings) parsed.settings = { ...initialDb.settings };
+    if (!parsed.roomSchedules || !Array.isArray(parsed.roomSchedules)) parsed.roomSchedules = [];
+    
+    // Ensure admin user exists with password 'admin' (also supports '44120' or custom password)
     let adminUser = parsed.users.find((u: any) => u.username === "admin");
     if (!adminUser) {
       parsed.users.push({
         username: "admin",
-        password: "44120",
+        password: "admin",
         name: "ผู้ดูแลระบบ (Admin)",
         department: "ฝ่ายสารสนเทศ",
         role: "admin",
         id: "admin"
       });
-    } else {
-      adminUser.password = "44120"; // Force correct password
+    } else if (!adminUser.password) {
+      adminUser.password = "admin";
     }
-    
-    // Ensure basic structure
-    if (!parsed.users) parsed.users = initialDb.users;
-    if (!parsed.checkIns) parsed.checkIns = [];
-    if (!parsed.settings) parsed.settings = initialDb.settings;
-    if (!parsed.roomSchedules) parsed.roomSchedules = [];
     
     return parsed;
   } catch (err) {
     console.error("Error reading database, using initialDb:", err);
-    return initialDb;
+    return JSON.parse(JSON.stringify(initialDb));
   }
 }
 
@@ -121,7 +129,8 @@ function saveDb(data: any) {
 const db = loadDb();
 saveDb(db);
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // API: Login
 app.post("/api/auth/login", (req, res) => {
@@ -131,9 +140,14 @@ app.post("/api/auth/login", (req, res) => {
   }
 
   const currentDb = loadDb();
-  const user = currentDb.users.find(
+  let user = currentDb.users.find(
     (u: any) => u.username === username && u.password === password
   );
+
+  // Flexible admin password check
+  if (!user && username === "admin" && (password === "admin" || password === "44120")) {
+    user = currentDb.users.find((u: any) => u.username === "admin");
+  }
 
   if (!user) {
     return res.status(401).json({ error: "ไอดีหรือรหัสผ่านไม่ถูกต้อง" });
@@ -434,7 +448,169 @@ function parseCSV(csvText: string): string[][] {
   return result;
 }
 
-// API: Import students or schedules from Google Sheets
+// Shared Core Importer for both CSV and Excel Sheet data
+function processImportRows(rows: any[][], sourceUrl: string = "") {
+  if (!rows || rows.length < 2) {
+    return { error: "ไม่พบข้อมูลในตาราง หรือตารางว่างเปล่า" };
+  }
+
+  const currentDb = loadDb();
+  const headers = rows[0].map(h => String(h || "").toLowerCase().trim());
+
+  // Check if this sheet is a Room Schedule sheet
+  const isScheduleSheet = headers.some(h => 
+    h.includes("เวลากี่โมง") || 
+    h.includes("วิชาที่เรียน") || 
+    h.includes("ห้องที่ใช้") || 
+    h.includes("จำนวนนักเรียน") || 
+    h.includes("สถานะห้อง") ||
+    h.includes("ว่างไม่ว่าง")
+  ) || (
+    headers.some(h => h.includes("เวลา") || h.includes("time")) && 
+    headers.some(h => h.includes("วิชา") || h.includes("subject") || h.includes("course")) &&
+    headers.some(h => h.includes("ห้อง") || h.includes("room"))
+  );
+
+  if (isScheduleSheet) {
+    let timeColIdx = -1;
+    let userColIdx = -1;
+    let subjectColIdx = -1;
+    let roomColIdx = -1;
+    let countColIdx = -1;
+    let statusColIdx = -1;
+
+    for (let j = 0; j < headers.length; j++) {
+      const h = headers[j];
+      if (h.includes("เวลากี่โมง") || h.includes("เวลา") || h.includes("time")) {
+        timeColIdx = j;
+      } else if (h.includes("ชื่อคนใช้") || h.includes("คนใช้") || h.includes("ผู้ใช้") || h.includes("user") || h.includes("name") || h.includes("ชื่อ")) {
+        if (h.includes("ชื่อคนใช้") || userColIdx === -1) {
+          userColIdx = j;
+        }
+      } else if (h.includes("วิชาที่เรียน") || h.includes("วิชา") || h.includes("subject") || h.includes("course")) {
+        subjectColIdx = j;
+      } else if (h.includes("ห้องที่ใช้") || h.includes("ห้อง") || h.includes("room")) {
+        roomColIdx = j;
+      } else if (h.includes("จำนวนนักเรียน") || h.includes("จำนวน") || h.includes("student") || h.includes("count")) {
+        countColIdx = j;
+      } else if (h.includes("สถานะห้องว่างไม่ว่าง") || h.includes("สถานะห้อง") || h.includes("ว่างไม่ว่าง") || h.includes("สถานะ") || h.includes("status")) {
+        statusColIdx = j;
+      }
+    }
+
+    if (timeColIdx === -1) timeColIdx = 0;
+    if (userColIdx === -1) userColIdx = 1;
+    if (subjectColIdx === -1) subjectColIdx = 2;
+    if (roomColIdx === -1) roomColIdx = 3;
+    if (countColIdx === -1) countColIdx = 4;
+    if (statusColIdx === -1) statusColIdx = 5;
+
+    const importedSchedules = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+
+      const timeVal = String(row[timeColIdx] ?? "").trim();
+      const userVal = String(row[userColIdx] ?? "").trim();
+      const subjectVal = String(row[subjectColIdx] ?? "").trim();
+      const roomVal = String(row[roomColIdx] ?? "").trim();
+      const countValStr = String(row[countColIdx] ?? "0").trim();
+      const countVal = parseInt(countValStr.replace(/[^0-9]/g, "")) || 0;
+      const statusVal = String(row[statusColIdx] ?? "ว่าง").trim();
+
+      if (!timeVal && !userVal && !subjectVal) continue;
+
+      importedSchedules.push({
+        id: "sch_" + Date.now().toString() + "_" + i,
+        time: timeVal,
+        user: userVal,
+        subject: subjectVal,
+        room: roomVal,
+        studentCount: countVal,
+        status: statusVal
+      });
+    }
+
+    currentDb.roomSchedules = importedSchedules;
+    if (sourceUrl) currentDb.settings.googleSheetUrl = sourceUrl;
+    saveDb(currentDb);
+
+    return {
+      success: true,
+      importedCount: importedSchedules.length,
+      updatedCount: 0,
+      isSchedule: true,
+      message: `นำเข้าตารางเรียน/การใช้ห้องสำเร็จจำนวน ${importedSchedules.length} รายการ`
+    };
+  }
+
+  // Fallback: Parse as Students list
+  let idColIdx = -1;
+  let nameColIdx = -1;
+  let deptColIdx = -1;
+
+  for (let j = 0; j < headers.length; j++) {
+    const h = headers[j];
+    if (h.includes("รหัส") || h.includes("id")) {
+      idColIdx = j;
+    } else if (h.includes("ชื่อ") || h.includes("name") || h.includes("นามสกุล")) {
+      if (nameColIdx === -1) nameColIdx = j;
+    } else if (h.includes("สาขา") || h.includes("major") || h.includes("dept") || h.includes("วิชา")) {
+      deptColIdx = j;
+    }
+  }
+
+  if (idColIdx === -1) idColIdx = 0;
+  if (nameColIdx === -1) nameColIdx = 1;
+  if (deptColIdx === -1) deptColIdx = 2;
+
+  let importedCount = 0;
+  let updatedCount = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    const username = String(row[idColIdx] ?? "").trim();
+    const name = String(row[nameColIdx] ?? "").trim();
+    const department = String(row[deptColIdx] ?? "ทั่วไป").trim();
+
+    if (!username || !name) continue;
+
+    const existingUserIdx = currentDb.users.findIndex(
+      (u: any) => u.username === username && u.role === "student"
+    );
+
+    if (existingUserIdx !== -1) {
+      currentDb.users[existingUserIdx].name = name;
+      currentDb.users[existingUserIdx].department = department;
+      updatedCount++;
+    } else {
+      currentDb.users.push({
+        id: "s" + Date.now().toString() + i,
+        username,
+        password: "password",
+        name,
+        department,
+        role: "student"
+      });
+      importedCount++;
+    }
+  }
+
+  if (sourceUrl) currentDb.settings.googleSheetUrl = sourceUrl;
+  saveDb(currentDb);
+
+  return {
+    success: true,
+    importedCount,
+    updatedCount,
+    isSchedule: false,
+    message: `นำเข้ารายชื่อนักเรียนสำเร็จ: เพิ่มใหม่ ${importedCount} ราย, อัปเดตข้อมูลเดิม ${updatedCount} ราย`
+  };
+}
+
+// API: Import students or schedules from Google Sheets URL
 app.post("/api/import-sheet", async (req, res) => {
   const { sheetUrl } = req.body;
   if (!sheetUrl) {
@@ -444,7 +620,7 @@ app.post("/api/import-sheet", async (req, res) => {
   const sheetId = extractSpreadsheetId(sheetUrl);
   const fetchUrl = sheetId 
     ? `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
-    : sheetUrl; // Fallback if they pasted export URL directly
+    : sheetUrl;
 
   try {
     const response = await fetch(fetchUrl);
@@ -455,171 +631,15 @@ app.post("/api/import-sheet", async (req, res) => {
     const csvText = await response.text();
     const rows = parseCSV(csvText);
 
-    if (rows.length < 2) {
-      return res.status(400).json({ error: "ไม่พบข้อมูลในไฟล์ Google Sheet (หรือตารางว่างเปล่า)" });
+    const result = processImportRows(rows, sheetUrl);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
     }
 
-    const currentDb = loadDb();
-    const headers = rows[0].map(h => h.toLowerCase().trim());
-
-    // Check if this sheet is a Room Schedule sheet (based on presence of time/subject/room keywords)
-    const isScheduleSheet = headers.some(h => 
-      h.includes("เวลากี่โมง") || 
-      h.includes("วิชาที่เรียน") || 
-      h.includes("ห้องที่ใช้") || 
-      h.includes("จำนวนนักเรียน") || 
-      h.includes("สถานะห้อง") ||
-      h.includes("ว่างไม่ว่าง")
-    ) || (
-      headers.some(h => h.includes("เวลา") || h.includes("time")) && 
-      headers.some(h => h.includes("วิชา") || h.includes("subject") || h.includes("course")) &&
-      headers.some(h => h.includes("ห้อง") || h.includes("room"))
-    );
-
-    if (isScheduleSheet) {
-      let timeColIdx = -1;
-      let userColIdx = -1;
-      let subjectColIdx = -1;
-      let roomColIdx = -1;
-      let countColIdx = -1;
-      let statusColIdx = -1;
-
-      for (let j = 0; j < headers.length; j++) {
-        const h = headers[j];
-        if (h.includes("เวลากี่โมง") || h.includes("เวลา") || h.includes("time")) {
-          timeColIdx = j;
-        } else if (h.includes("ชื่อคนใช้") || h.includes("คนใช้") || h.includes("ผู้ใช้") || h.includes("user") || h.includes("name") || h.includes("ชื่อ")) {
-          if (h.includes("ชื่อคนใช้") || userColIdx === -1) {
-            userColIdx = j;
-          }
-        } else if (h.includes("วิชาที่เรียน") || h.includes("วิชา") || h.includes("subject") || h.includes("course")) {
-          subjectColIdx = j;
-        } else if (h.includes("ห้องที่ใช้") || h.includes("ห้อง") || h.includes("room")) {
-          roomColIdx = j;
-        } else if (h.includes("จำนวนนักเรียน") || h.includes("จำนวน") || h.includes("student") || h.includes("count")) {
-          countColIdx = j;
-        } else if (h.includes("สถานะห้องว่างไม่ว่าง") || h.includes("สถานะห้อง") || h.includes("ว่างไม่ว่าง") || h.includes("สถานะ") || h.includes("status")) {
-          statusColIdx = j;
-        }
-      }
-
-      // Default mappings if headers cannot be resolved automatically
-      if (timeColIdx === -1) timeColIdx = 0;
-      if (userColIdx === -1) userColIdx = 1;
-      if (subjectColIdx === -1) subjectColIdx = 2;
-      if (roomColIdx === -1) roomColIdx = 3;
-      if (countColIdx === -1) countColIdx = 4;
-      if (statusColIdx === -1) statusColIdx = 5;
-
-      const importedSchedules = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row.length <= Math.max(timeColIdx, userColIdx)) continue;
-
-        const timeVal = row[timeColIdx]?.trim() || "";
-        const userVal = row[userColIdx]?.trim() || "";
-        const subjectVal = row[subjectColIdx]?.trim() || "";
-        const roomVal = row[roomColIdx]?.trim() || "";
-        const countValStr = row[countColIdx]?.trim() || "0";
-        const countVal = parseInt(countValStr.replace(/[^0-9]/g, "")) || 0;
-        const statusVal = row[statusColIdx]?.trim() || "ว่าง";
-
-        if (!timeVal && !userVal && !subjectVal) continue;
-
-        importedSchedules.push({
-          id: "sch_" + Date.now().toString() + "_" + i,
-          time: timeVal,
-          user: userVal,
-          subject: subjectVal,
-          room: roomVal,
-          studentCount: countVal,
-          status: statusVal
-        });
-      }
-
-      currentDb.roomSchedules = importedSchedules;
-      currentDb.settings.googleSheetUrl = sheetUrl;
-      saveDb(currentDb);
-
-      return res.json({
-        success: true,
-        importedCount: importedSchedules.length,
-        updatedCount: 0,
-        isSchedule: true,
-        message: `นำเข้าสำเร็จ: ตารางเวลาการใช้งานห้องพักครู/ห้องเรียนจำนวน ${importedSchedules.length} รายการ`
-      });
-    }
-
-    // Fallback: Parse as Students list
-    let idColIdx = -1;
-    let nameColIdx = -1;
-    let deptColIdx = -1;
-
-    for (let j = 0; j < headers.length; j++) {
-      const h = headers[j];
-      if (h.includes("รหัส") || h.includes("id")) {
-        idColIdx = j;
-      } else if (h.includes("ชื่อ") || h.includes("name") || h.includes("นามสกุล")) {
-        nameColIdx = j;
-      } else if (h.includes("สาขา") || h.includes("major") || h.includes("dept") || h.includes("วิชา")) {
-        deptColIdx = j;
-      }
-    }
-
-    // Default mappings if headers cannot be resolved automatically
-    if (idColIdx === -1) idColIdx = 0;
-    if (nameColIdx === -1) nameColIdx = 1;
-    if (deptColIdx === -1) deptColIdx = 2;
-
-    let importedCount = 0;
-    let updatedCount = 0;
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (row.length <= Math.max(idColIdx, nameColIdx)) continue;
-
-      const username = row[idColIdx]?.trim();
-      const name = row[nameColIdx]?.trim();
-      const department = row[deptColIdx]?.trim() || "ทั่วไป";
-
-      if (!username || !name) continue;
-
-      const existingUserIdx = currentDb.users.findIndex(
-        (u: any) => u.username === username && u.role === "student"
-      );
-
-      if (existingUserIdx !== -1) {
-        // Update name/dept for existing student
-        currentDb.users[existingUserIdx].name = name;
-        currentDb.users[existingUserIdx].department = department;
-        updatedCount++;
-      } else {
-        // Create new student
-        currentDb.users.push({
-          id: "s" + Date.now().toString() + i,
-          username,
-          password: "password", // Default password
-          name,
-          department,
-          role: "student"
-        });
-        importedCount++;
-      }
-    }
-
-    currentDb.settings.googleSheetUrl = sheetUrl;
-    saveDb(currentDb);
-
-    res.json({
-      success: true,
-      importedCount,
-      updatedCount,
-      isSchedule: false,
-      message: `นำเข้าสำเร็จ: เพิ่มนักศึกษาใหม่ ${importedCount} ราย, อัปเดตข้อมูลนักศึกษาเดิม ${updatedCount} ราย`
-    });
+    return res.json(result);
   } catch (error: any) {
     console.error("Google Sheets Import error:", error);
-    res.status(500).json({ error: `ไม่สามารถนำเข้าข้อมูลจาก Google Sheets ได้: ${error.message || error}. กรุณาตรวจสอบว่าลิงก์แชร์เป็น 'ทุกคนที่มีลิงก์สามารถดูได้' (Anyone with link can view)` });
+    res.status(500).json({ error: `ไม่สามารถนำเข้าข้อมูลจาก Google Sheets ได้: ${error.message || error}. กรุณาตรวจสอบว่าเปิดสิทธิ์ 'ทุกคนที่มีลิงก์สามารถดูได้'` });
   }
 });
 
@@ -702,4 +722,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

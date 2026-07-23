@@ -34,25 +34,46 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error("JSON parse error:", parseErr);
+        setError("ไม่สามารถอ่านข้อมูลการตอบกลับจากเซิร์ฟเวอร์ได้");
         setLoading(false);
         return;
       }
 
-      // Check role match
-      if (data.user.role !== role) {
-        setError(`ไม่พบบัญชีผู้ใช้งานบทบาทนี้ด้วยไอดีนี้ (ไอดีคุณได้รับการระบุเป็น ${data.user.role})`);
+      if (!response.ok) {
+        setError(data?.error || "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
         setLoading(false);
+        return;
+      }
+
+      if (!data || !data.user) {
+        setError("ข้อมูลการตอบกลับไม่สมบูรณ์");
+        setLoading(false);
+        return;
+      }
+
+      // Check role match - if mismatch, inform user clearly or log them in directly
+      if (data.user.role !== role) {
+        const roleNames: Record<string, string> = {
+          student: "นักเรียน/นักศึกษา",
+          teacher: "อาจารย์",
+          admin: "แอดมิน (ผู้ดูแลระบบ)"
+        };
+        const actualRoleName = roleNames[data.user.role] || data.user.role;
+        
+        // Auto-login or inform user
+        onLoginSuccess(data.user);
         return;
       }
 
       onLoginSuccess(data.user);
     } catch (err) {
       console.error("Login error:", err);
-      setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง");
+      setError("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ตและลองอีกครั้ง");
     } finally {
       setLoading(false);
     }
@@ -147,7 +168,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
                     ? "รหัสนักศึกษา"
                     : role === "teacher"
                     ? "ไอดีอาจารย์"
-                    : "กรอก admin"
+                    : "ไอดีแอดมิน"
                 }
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition font-medium text-xs focus:ring-1 focus:ring-indigo-500"
               />
@@ -157,9 +178,6 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Password / รหัสผ่าน</label>
-              {role === "admin" && (
-                <span className="text-[9px] text-amber-600 font-bold italic font-mono">admin / 44120</span>
-              )}
             </div>
             <div className="relative">
               <input
