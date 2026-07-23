@@ -82,6 +82,9 @@ const initialDb = {
 // Check and fix the DB if it is empty or missing admin
 function loadDb() {
   try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
     if (!fs.existsSync(DB_PATH)) {
       fs.writeFileSync(DB_PATH, JSON.stringify(initialDb, null, 2), "utf8");
       return JSON.parse(JSON.stringify(initialDb));
@@ -119,6 +122,9 @@ function loadDb() {
 
 function saveDb(data: any) {
   try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), "utf8");
   } catch (err) {
     console.error("Error saving database:", err);
@@ -700,6 +706,19 @@ app.post("/api/settings", (req, res) => {
   res.json({ success: true, settings: currentDb.settings });
 });
 
+// API 404 Fallback
+app.use("/api/*", (req, res) => {
+  res.status(404).json({ error: "ไม่พบข้อมูลที่ต้องการ หรือ API endpoint ไม่ถูกต้อง" });
+});
+
+// Global API Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Express API error:", err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: err?.message || "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+});
 
 // Vite middleware integration
 async function startServer() {

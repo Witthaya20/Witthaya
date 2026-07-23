@@ -34,14 +34,12 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         body: JSON.stringify({ username, password }),
       });
 
-      let data;
+      let data: any = null;
+      const resText = await response.text();
       try {
-        data = await response.json();
+        data = resText ? JSON.parse(resText) : null;
       } catch (parseErr) {
-        console.error("JSON parse error:", parseErr);
-        setError("ไม่สามารถอ่านข้อมูลการตอบกลับจากเซิร์ฟเวอร์ได้");
-        setLoading(false);
-        return;
+        console.error("Non-JSON response received from server:", resText);
       }
 
       if (!response.ok) {
@@ -51,7 +49,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
       }
 
       if (!data || !data.user) {
-        setError("ข้อมูลการตอบกลับไม่สมบูรณ์");
+        setError(data?.error || "ไอดีหรือรหัสผ่านไม่ถูกต้อง");
         setLoading(false);
         return;
       }
