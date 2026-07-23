@@ -142,80 +142,85 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // API: Login Handler (Supports both /api/auth/login and /api/login)
 const handleLogin = (req: express.Request, res: express.Response) => {
-  let { username, password } = req.body || {};
-  
-  let rawUser = String(username || "").trim();
-  let rawPass = String(password || "").trim();
+  try {
+    let { username, password } = req.body || {};
+    
+    let rawUser = String(username || "").trim();
+    let rawPass = String(password || "").trim();
 
-  // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
-  if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
-    rawUser = "Witthaya";
-    rawPass = "44120";
-  }
+    // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
+    if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
+      rawUser = "Witthaya";
+      rawPass = "44120";
+    }
 
-  if (!rawUser) {
-    return res.status(400).json({ error: "กรุณากรอกไอดีเพื่อเข้าสู่ระบบ" });
-  }
+    if (!rawUser) {
+      return res.status(400).json({ error: "กรุณากรอกไอดีเพื่อเข้าสู่ระบบ" });
+    }
 
-  const currentDb = loadDb();
-  const lowerUser = rawUser.toLowerCase();
-  const lowerPass = rawPass.toLowerCase();
+    const currentDb = loadDb();
+    const lowerUser = rawUser.toLowerCase();
+    const lowerPass = rawPass.toLowerCase();
 
-  // 1. Admin Login Verification (Supports "Witthaya", "44120", "admin", "Witthaya-44120")
-  const isAdminRequest =
-    lowerUser.includes("witthaya") ||
-    lowerUser.includes("admin") ||
-    lowerPass.includes("44120") ||
-    lowerPass.includes("witthaya");
+    // 1. Admin Login Verification (Supports "Witthaya", "44120", "admin", "Witthaya-44120")
+    const isAdminRequest =
+      lowerUser.includes("witthaya") ||
+      lowerUser.includes("admin") ||
+      lowerPass.includes("44120") ||
+      lowerPass.includes("witthaya");
 
-  if (isAdminRequest) {
-    let adminUser = currentDb.users.find(
-      (u: any) => u.role === "admin" || u.username.toLowerCase() === "witthaya" || u.username.toLowerCase() === "admin"
+    if (isAdminRequest) {
+      let adminUser = currentDb.users.find(
+        (u: any) => u && (u.role === "admin" || String(u.username || "").toLowerCase() === "witthaya" || String(u.username || "").toLowerCase() === "admin")
+      );
+
+      if (!adminUser) {
+        adminUser = {
+          username: "Witthaya",
+          password: "44120",
+          name: "ผู้ดูแลระบบ (Witthaya)",
+          department: "ฝ่ายสารสนเทศ",
+          role: "admin",
+          id: "admin"
+        };
+        currentDb.users.push(adminUser);
+        saveDb(currentDb);
+      } else {
+        adminUser.username = "Witthaya";
+        adminUser.password = "44120";
+        saveDb(currentDb);
+      }
+
+      const { password: _, ...userInfo } = adminUser;
+      return res.json({ success: true, user: userInfo });
+    }
+
+    // 2. Existing Standard User Lookup
+    let user = currentDb.users.find(
+      (u: any) => u && String(u.username || "").trim().toLowerCase() === lowerUser
     );
 
-    if (!adminUser) {
-      adminUser = {
-        username: "Witthaya",
-        password: "44120",
-        name: "ผู้ดูแลระบบ (Witthaya)",
-        department: "ฝ่ายสารสนเทศ",
-        role: "admin",
-        id: "admin"
+    // 3. Auto-creation fallback if account does not exist yet (ensures smooth access)
+    if (!user) {
+      const isStudentId = /^\d+$/.test(rawUser);
+      user = {
+        id: (isStudentId ? "s" : "t") + Date.now().toString(),
+        username: rawUser,
+        password: rawPass || "password",
+        name: isStudentId ? `นักศึกษา (${rawUser})` : `ผู้ใช้งาน (${rawUser})`,
+        department: isStudentId ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
+        role: isStudentId ? "student" : "teacher"
       };
-      currentDb.users.push(adminUser);
-      saveDb(currentDb);
-    } else {
-      adminUser.username = "Witthaya";
-      adminUser.password = "44120";
+      currentDb.users.push(user);
       saveDb(currentDb);
     }
 
-    const { password: _, ...userInfo } = adminUser;
+    const { password: _, ...userInfo } = user;
     return res.json({ success: true, user: userInfo });
+  } catch (err: any) {
+    console.error("Login error in server:", err);
+    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ในการเข้าสู่ระบบ" });
   }
-
-  // 2. Existing Standard User Lookup
-  let user = currentDb.users.find(
-    (u: any) => String(u.username).trim().toLowerCase() === lowerUser
-  );
-
-  // 3. Auto-creation fallback if account does not exist yet (ensures smooth access)
-  if (!user) {
-    const isStudentId = /^\d+$/.test(rawUser);
-    user = {
-      id: (isStudentId ? "s" : "t") + Date.now().toString(),
-      username: rawUser,
-      password: rawPass || "password",
-      name: isStudentId ? `นักศึกษา (${rawUser})` : `ผู้ใช้งาน (${rawUser})`,
-      department: isStudentId ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
-      role: isStudentId ? "student" : "teacher"
-    };
-    currentDb.users.push(user);
-    saveDb(currentDb);
-  }
-
-  const { password: _, ...userInfo } = user;
-  return res.json({ success: true, user: userInfo });
 };
 
 app.post("/api/auth/login", handleLogin);

@@ -21,14 +21,13 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
     let sendUsername = username.trim();
     let sendPassword = password.trim();
 
-    // Auto-fill fallback for admin tab or admin credentials
-    if (role === "admin" || sendUsername.toLowerCase().includes("witthaya") || sendUsername.toLowerCase().includes("admin")) {
-      if (!sendUsername) sendUsername = "Witthaya";
-      if (!sendPassword) sendPassword = "44120";
+    if (!sendUsername) {
+      setError("กรุณากรอกไอดีเพื่อเข้าสู่ระบบ");
+      return;
     }
 
-    if (!sendUsername) {
-      setError("กรุณากรอกข้อมูลไอดีเข้าสู่ระบบ");
+    if (!sendPassword) {
+      setError("กรุณากรอกรหัสผ่าน");
       return;
     }
 
@@ -40,7 +39,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username: sendUsername, password: sendPassword || "44120" }),
+        body: JSON.stringify({ username: sendUsername, password: sendPassword }),
       });
 
       let data: any = null;
@@ -64,29 +63,6 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickAdminLogin = () => {
-    setUsername("Witthaya");
-    setPassword("44120");
-    setRole("admin");
-    // Trigger login directly
-    setLoading(true);
-    fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Witthaya", password: "44120" }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.user) {
-          onLoginSuccess(data.user);
-        } else {
-          setError(data?.error || "ไม่สามารถเข้าสู่ระบบแอดมินได้");
-        }
-      })
-      .catch(() => setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์"))
-      .finally(() => setLoading(false));
   };
 
   return (
@@ -161,20 +137,13 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
-                {role === "student"
-                  ? "Username / Student ID"
-                  : role === "teacher"
-                  ? "Username / Teacher ID"
-                  : "Admin ID"}
-              </label>
-              {role === "admin" && (
-                <span className="text-[10px] text-indigo-600 font-semibold font-mono bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                  ID: Witthaya
-                </span>
-              )}
-            </div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
+              {role === "student"
+                ? "Username / Student ID"
+                : role === "teacher"
+                ? "Username / Teacher ID"
+                : "Admin ID"}
+            </label>
             <div className="relative">
               <input
                 type="text"
@@ -185,7 +154,7 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
                     ? "รหัสนักศึกษา (เช่น 64012345)"
                     : role === "teacher"
                     ? "ไอดีอาจารย์ (เช่น teacher1)"
-                    : "Witthaya หรือ admin"
+                    : "ไอดีผู้ดูแลระบบ"
                 }
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition font-medium text-xs focus:ring-1 focus:ring-indigo-500"
               />
@@ -193,20 +162,13 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Password / รหัสผ่าน</label>
-              {role === "admin" && (
-                <span className="text-[10px] text-amber-700 font-semibold font-mono bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                  PASS: 44120
-                </span>
-              )}
-            </div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Password / รหัสผ่าน</label>
             <div className="relative">
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={role === "admin" ? "44120" : "••••••••"}
+                placeholder="••••••••"
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded py-2 px-3 outline-none text-slate-800 transition font-medium text-xs font-mono focus:ring-1 focus:ring-indigo-500"
               />
             </div>
@@ -227,21 +189,6 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
             )}
           </button>
         </form>
-
-        {/* Quick Admin Login Shortcut */}
-        {role === "admin" && (
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={handleQuickAdminLogin}
-              disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-xs border border-amber-400"
-            >
-              <Shield className="w-3.5 h-3.5 fill-slate-950" />
-              เข้าสู่ระบบแอดมินทันที (Witthaya / 44120)
-            </button>
-          </div>
-        )}
 
         {/* Footer actions */}
         {role !== "admin" && (

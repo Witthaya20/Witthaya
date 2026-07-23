@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, CheckIn, Stats, RoomSchedule } from "../types";
+import DataAnalytics from "./DataAnalytics";
 import {
   Shield,
   Users,
@@ -13,7 +14,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  BookOpen
+  BookOpen,
+  BarChart3
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -22,7 +24,7 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<"sheets" | "approvals" | "teachers" | "students" | "logs">("sheets");
+  const [activeTab, setActiveTab] = useState<"sheets" | "analytics" | "approvals" | "teachers" | "students" | "logs">("analytics");
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
@@ -431,6 +433,22 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
       <div className="flex border-b border-slate-200 gap-4 overflow-x-auto pb-1 text-xs">
         <button
           onClick={() => {
+            setActiveTab("analytics");
+            setError("");
+            setSuccess("");
+            setSearchQuery("");
+          }}
+          className={`pb-2 text-xs font-bold uppercase tracking-wider border-b-2 transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === "analytics"
+              ? "border-amber-500 text-amber-600"
+              : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-indigo-600" />
+          กราฟ & สถิติรายวัน
+        </button>
+        <button
+          onClick={() => {
             setActiveTab("sheets");
             setError("");
             setSuccess("");
@@ -529,6 +547,16 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
           <div>{success}</div>
         </div>
+      )}
+
+      {/* Tab CONTENT 0: Data Analytics & Recharts */}
+      {activeTab === "analytics" && (
+        <DataAnalytics
+          checkIns={checkIns}
+          teachers={teachers}
+          students={students}
+          roomSchedules={roomSchedules}
+        />
       )}
 
       {/* Tab CONTENT 1: Google Sheet Import */}
