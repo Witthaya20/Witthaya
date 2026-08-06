@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { User } from "../types";
-import { LogIn, UserCheck, Shield, Key, AlertCircle, Sparkles } from "lucide-react";
+import { LogIn, UserCheck, Shield, AlertCircle, Sparkles } from "lucide-react";
 
 interface LoginPanelProps {
   onLoginSuccess: (user: User) => void;
@@ -160,51 +160,6 @@ export default function LoginPanel({ onLoginSuccess, onNavigateToRegister }: Log
           </button>
         </div>
 
-        {/* Quick Demo Fill Buttons */}
-        <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] space-y-1.5">
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-            <Key className="w-3 h-3 text-indigo-600" />
-            บัญชีทดสอบในระบบ (คลิกเพื่อเติมข้อมูล)
-          </div>
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setRole("admin");
-                setUsername("Witthaya");
-                setPassword("44120");
-                setError("");
-              }}
-              className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded px-2 py-0.5 text-[10px] font-bold cursor-pointer transition"
-            >
-              🛡️ แอดมิน (Witthaya)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRole("teacher");
-                setUsername("teacher1");
-                setPassword("password");
-                setError("");
-              }}
-              className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 border border-indigo-300 rounded px-2 py-0.5 text-[10px] font-bold cursor-pointer transition"
-            >
-              👨‍🏫 อาจารย์ (teacher1)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRole("student");
-                setUsername("64012345");
-                setPassword("password");
-                setError("");
-              }}
-              className="bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded px-2 py-0.5 text-[10px] font-bold cursor-pointer transition"
-            >
-              🎓 นักศึกษา (64012345)
-            </button>
-          </div>
-        </div>
 
         {error && (
           <div className="bg-red-50 text-red-700 border border-red-200 rounded p-2.5 flex items-start gap-2 text-xs animate-pulse">
