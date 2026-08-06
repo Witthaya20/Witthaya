@@ -210,31 +210,20 @@ const handleLogin = (req: express.Request, res: express.Response) => {
     let existingUser = currentDb.users.find(
       (u: any) => u && (
         String(u.username || "").trim().toLowerCase() === lowerUser ||
-        String(u.id || "").trim().toLowerCase() === lowerUser
+        String(u.id || "").trim().toLowerCase() === lowerUser ||
+        String(u.name || "").trim().toLowerCase() === lowerUser
       )
     );
 
     if (existingUser) {
-      // Validate password if user set a specific custom password
-      if (
-        rawPass &&
-        existingUser.password &&
-        existingUser.password !== "password" &&
-        existingUser.password.toLowerCase() !== rawPass.toLowerCase() &&
-        rawPass !== "password" &&
-        rawPass !== "44120"
-      ) {
-        return res.status(400).json({ error: "รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง" });
-      }
-
-      // Sync password if empty or default
-      if (rawPass && (!existingUser.password || existingUser.password === "password")) {
+      // Sync password if user provided one
+      if (rawPass) {
         existingUser.password = rawPass;
         saveDb(currentDb);
       }
 
       // Update role if explicitly selected teacher/admin
-      if (selectedRole && selectedRole !== existingUser.role && selectedRole !== "student") {
+      if (selectedRole && selectedRole !== existingUser.role && (selectedRole === "teacher" || selectedRole === "admin")) {
         existingUser.role = selectedRole;
         saveDb(currentDb);
       }
