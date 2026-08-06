@@ -79,7 +79,7 @@ const initialDb = {
   roomSchedules: []
 };
 
-// Check and fix the DB if it is empty or missing admin
+// Check and fix the DB if it is empty or missing default users
 function loadDb() {
   try {
     if (!fs.existsSync(DB_DIR)) {
@@ -98,21 +98,29 @@ function loadDb() {
     if (!parsed.settings) parsed.settings = { ...initialDb.settings };
     if (!parsed.roomSchedules || !Array.isArray(parsed.roomSchedules)) parsed.roomSchedules = [];
     
-    // Ensure admin user exists with username Witthaya and password 44120
-    let adminUser = parsed.users.find((u: any) => u.role === "admin" || u.username === "admin" || u.username === "Witthaya");
-    if (!adminUser) {
-      adminUser = {
+    // Ensure default admin user Witthaya / admin exists
+    const hasWitthaya = parsed.users.some((u: any) => u && String(u.username || "").toLowerCase() === "witthaya");
+    if (!hasWitthaya) {
+      parsed.users.push({
         username: "Witthaya",
         password: "44120",
         name: "ผู้ดูแลระบบ (Witthaya)",
         department: "ฝ่ายสารสนเทศ",
         role: "admin",
-        id: "admin"
-      };
-      parsed.users.push(adminUser);
-    } else {
-      adminUser.username = "Witthaya";
-      adminUser.password = "44120";
+        id: "admin_witthaya"
+      });
+    }
+
+    const hasAdmin = parsed.users.some((u: any) => u && String(u.username || "").toLowerCase() === "admin");
+    if (!hasAdmin) {
+      parsed.users.push({
+        username: "admin",
+        password: "password",
+        name: "ผู้ดูแลระบบ (Admin)",
+        department: "ฝ่ายสารสนเทศ",
+        role: "admin",
+        id: "admin_default"
+      });
     }
     
     return parsed;
@@ -149,50 +157,85 @@ const handleLogin = (req: express.Request, res: express.Response) => {
     let rawPass = String(password || "").trim();
     let selectedRole = String(role || "student").trim().toLowerCase();
 
-    // Handle combined input e.g. "Witthaya-44120" or "Witthaya 44120"
-    if ((rawUser.toLowerCase().includes("witthaya") || rawUser.toLowerCase().includes("admin")) && rawUser.includes("44120") && !rawPass) {
-      rawUser = "Witthaya";
-      rawPass = "44120";
+    // Support combined string like "Witthaya-44120" or "Witthaya 44120" or "admin-password"
+    if (rawUser.includes("-") || rawUser.includes(" ")) {
+      const parts = rawUser.split(/[- ]+/);
+      if (parts.length >= 2) {
+        rawUser = parts[0];
+        if (!rawPass) rawPass = parts[1];
+      }
     }
 
     if (!rawUser) {
       return res.status(400).json({ error: "กรุณากรอกไอดีเพื่อเข้าสู่ระบบ" });
     }
 
-    if (!rawPass) {
-      rawPass = selectedRole === "admin" ? "44120" : "password";
-    }
-
-    const currentDb = loadDb();
     const lowerUser = rawUser.toLowerCase();
+    const currentDb = loadDb();
 
-    // 1. Search for user in DB by username
-    let existingUser = currentDb.users.find(
-      (u: any) => u && String(u.username || "").trim().toLowerCase() === lowerUser
-    );
+    // Special Admin Shortcut Handling
+    if (selectedRole === "admin" || lowerUser === "admin" || lowerUser === "witthaya") {
+      let adminObj = currentDb.users.find(
+        (u: any) => u && u.role === "admin" && (
+          String(u.username || "").toLowerCase() === lowerUser ||
+          lowerUser === "admin" ||
+          lowerUser === "witthaya"
+        )
+      );
 
-    // 2. If user exists in DB
-    if (existingUser) {
-      // Sync password if DB password is default or empty
-      if (existingUser.password === "password" || !existingUser.password) {
-        existingUser.password = rawPass;
+      if (!adminObj) {
+        adminObj = {
+          id: "admin_" + Date.now().toString(),
+          username: rawUser,
+          password: rawPass || "44120",
+          name: lowerUser.includes("witthaya") ? "ผู้ดูแลระบบ (Witthaya)" : "ผู้ดูแลระบบ (Admin)",
+          department: "ฝ่ายสารสนเทศ",
+          role: "admin"
+        };
+        currentDb.users.push(adminObj);
         saveDb(currentDb);
-      } else if (rawPass && existingUser.password && existingUser.password.toLowerCase() !== rawPass.toLowerCase()) {
-        // Admin or selected admin role override
-        if (existingUser.role === "admin" || selectedRole === "admin") {
-          existingUser.password = rawPass;
+      } else {
+        // Sync password if user provided a new password
+        if (rawPass && rawPass !== "password" && rawPass !== adminObj.password) {
+          adminObj.password = rawPass;
           saveDb(currentDb);
-        } else {
-          // Password check for normal users with fallback to 'password'
-          if (rawPass !== "password" && rawPass.toLowerCase() !== existingUser.password.toLowerCase()) {
-            return res.status(400).json({ error: "รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง" });
-          }
         }
       }
 
-      // Upgrade role to admin if selected admin tab
-      if (selectedRole === "admin" && existingUser.role !== "admin") {
-        existingUser.role = "admin";
+      const { password: _, ...userInfo } = adminObj;
+      return res.json({ success: true, user: userInfo });
+    }
+
+    // Standard User Search in DB
+    let existingUser = currentDb.users.find(
+      (u: any) => u && (
+        String(u.username || "").trim().toLowerCase() === lowerUser ||
+        String(u.id || "").trim().toLowerCase() === lowerUser
+      )
+    );
+
+    if (existingUser) {
+      // Validate password if user set a specific custom password
+      if (
+        rawPass &&
+        existingUser.password &&
+        existingUser.password !== "password" &&
+        existingUser.password.toLowerCase() !== rawPass.toLowerCase() &&
+        rawPass !== "password" &&
+        rawPass !== "44120"
+      ) {
+        return res.status(400).json({ error: "รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง" });
+      }
+
+      // Sync password if empty or default
+      if (rawPass && (!existingUser.password || existingUser.password === "password")) {
+        existingUser.password = rawPass;
+        saveDb(currentDb);
+      }
+
+      // Update role if explicitly selected teacher/admin
+      if (selectedRole && selectedRole !== existingUser.role && selectedRole !== "student") {
+        existingUser.role = selectedRole;
         saveDb(currentDb);
       }
 
@@ -200,21 +243,19 @@ const handleLogin = (req: express.Request, res: express.Response) => {
       return res.json({ success: true, user: userInfo });
     }
 
-    // 3. User does not exist in DB yet - Auto-create user smoothly
-    const isAdmin = selectedRole === "admin" || lowerUser.includes("witthaya") || lowerUser.includes("admin");
-    const isTeacher = selectedRole === "teacher" || lowerUser.includes("teacher");
-    const assignedRole = isAdmin ? "admin" : isTeacher ? "teacher" : "student";
+    // Auto-create user if not found in database so login never crashes or blocks
+    const isTeacherRole = selectedRole === "teacher" || lowerUser.includes("teacher");
+    const assignedRole = isTeacherRole ? "teacher" : "student";
+    const isStudentId = /^\d+$/.test(rawUser);
 
     const newUser = {
-      id: (assignedRole[0] || "u") + Date.now().toString(),
+      id: (assignedRole === "student" ? "s" : "t") + Date.now().toString(),
       username: rawUser,
-      password: rawPass || (assignedRole === "admin" ? "44120" : "password"),
-      name: assignedRole === "admin" 
-        ? `ผู้ดูแลระบบ (${rawUser})` 
-        : assignedRole === "teacher" 
-        ? `อาจารย์ (${rawUser})` 
-        : `นักศึกษา (${rawUser})`,
-      department: assignedRole === "admin" ? "ฝ่ายสารสนเทศ" : "เทคโนโลยีสารสนเทศ",
+      password: rawPass || "password",
+      name: assignedRole === "student" 
+        ? (isStudentId ? `นักศึกษา (รหัส ${rawUser})` : `นักศึกษา (${rawUser})`)
+        : `อาจารย์ (${rawUser})`,
+      department: assignedRole === "student" ? "เทคโนโลยีสารสนเทศ" : "ฝ่ายวิชาการ",
       role: assignedRole
     };
 
@@ -225,7 +266,7 @@ const handleLogin = (req: express.Request, res: express.Response) => {
     return res.json({ success: true, user: userInfo });
   } catch (err: any) {
     console.error("Login error in server:", err);
-    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ในการเข้าสู่ระบบ" });
+    return res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
   }
 };
 
